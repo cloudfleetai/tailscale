@@ -288,8 +288,13 @@ var Features = map[FeatureTag]FeatureMeta{
 	},
 	"serviceclientprefs": {Sym: "ServiceClientPrefs", Desc: "Desktop client service launch preferences"},
 	"favorites":          {Sym: "Favorites", Desc: "Locally-pinned favorite devices, exit nodes, and services"},
-	"qrcodes":            {Sym: "QRCodes", Desc: "QR codes in tailscale CLI"},
-	"relayserver":        {Sym: "RelayServer", Desc: "Relay server"},
+	"kubepodroutes": {
+		Sym:  "KubePodRoutes",
+		Desc: "Advertise a Kubernetes node's pod CIDRs as subnet routes",
+		Deps: []FeatureTag{"advertiseroutes"},
+	},
+	"qrcodes":     {Sym: "QRCodes", Desc: "QR codes in tailscale CLI"},
+	"relayserver": {Sym: "RelayServer", Desc: "Relay server"},
 	"remoteconfig": {
 		Sym:  "RemoteConfig",
 		Desc: "Full remote configuration of this node by the tailnet admin, opting out of Tailscale's per-feature double opt-in in favor of a single client-side trust decision",
