@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 // Package kubepodroutes advertises a Kubernetes node's pod CIDRs as subnet
-// routes, read from its Node object with the kubeconfig named by
-// TS_KUBE_POD_ROUTES_KUBECONFIG.
+// routes, read from its Node object with the kubelet's kubeconfig.
 package kubepodroutes
 
 import (
@@ -15,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"tailscale.com/envknob"
 	"tailscale.com/feature"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnext"
@@ -24,12 +22,8 @@ import (
 
 const featureName = "kubepodroutes"
 
-var (
-	kubeconfigPath = envknob.RegisterString("TS_KUBE_POD_ROUTES_KUBECONFIG")
-	nodeNameKnob   = envknob.RegisterString("TS_KUBE_POD_ROUTES_NODE") // defaults to the hostname
-)
-
 const (
+	kubeconfigPath  = "/etc/kubernetes/kubelet.conf"
 	retryInterval   = 5 * time.Second // until the node has pod CIDRs
 	refreshInterval = 5 * time.Minute // afterwards
 )
@@ -47,25 +41,18 @@ type prefsEditor interface {
 }
 
 func newExtension(logf logger.Logf, sb ipnext.SafeBackend) (ipnext.Extension, error) {
-	path := kubeconfigPath()
-	if path == "" {
-		return nil, ipnext.SkipExtension
-	}
 	ed, ok := sb.(prefsEditor)
 	if !ok {
 		return nil, errors.New("backend cannot edit prefs")
 	}
-	node := nodeNameKnob()
-	if node == "" {
-		var err error
-		if node, err = os.Hostname(); err != nil {
-			return nil, err
-		}
+	node, err := os.Hostname()
+	if err != nil {
+		return nil, err
 	}
 	return &extension{
 		logf:       logger.WithPrefix(logf, featureName+": "),
 		ed:         ed,
-		kubeconfig: path,
+		kubeconfig: kubeconfigPath,
 		node:       node,
 	}, nil
 }
