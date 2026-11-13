@@ -4,9 +4,16 @@
 package kubepodroutes
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -14,6 +21,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"tailscale.com/ipn"
 )
@@ -46,7 +54,6 @@ func TestMergeRoutes(t *testing.T) {
 	}
 }
 
-// kubeconfigFor writes a kubeconfig that trusts srv and sends token.
 func kubeconfigFor(t *testing.T, srv *httptest.Server, token string) string {
 	t.Helper()
 	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
@@ -89,7 +96,8 @@ func TestFetchPodCIDRs(t *testing.T) {
 					http.Error(w, "forbidden", http.StatusForbidden)
 					return
 				}
-				fmt.Fprintf(w, `{"spec":%s}`, tt.spec)
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprintf(w, `{"apiVersion":"v1","kind":"Node","metadata":{"name":"node-1"},"spec":%s}`, tt.spec)
 			}))
 			defer srv.Close()
 			got, err := fetchPodCIDRs(t.Context(), kubeconfigFor(t, srv, "secret"), "node-1")
@@ -100,6 +108,74 @@ func TestFetchPodCIDRs(t *testing.T) {
 				t.Errorf("got %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// A kubelet kubeconfig authenticates with certificate files.
+func TestFetchPodCIDRsClientCert(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "system:node:node-1"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(r.TLS.PeerCertificates) == 0 || r.TLS.PeerCertificates[0].Subject.CommonName != "system:node:node-1" {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"apiVersion":"v1","kind":"Node","metadata":{"name":"node-1"},"spec":{"podCIDRs":["10.244.3.0/24"]}}`)
+	}))
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAnyClientCert}
+	srv.StartTLS()
+	defer srv.Close()
+
+	dir := t.TempDir()
+	write := func(name string, data []byte) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("ca.crt", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+	write("client.pem", append(
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})...))
+	write("kubeconfig", fmt.Appendf(nil, `apiVersion: v1
+kind: Config
+current-context: ctx
+clusters:
+- name: c
+  cluster: {server: %s, certificate-authority: ca.crt}
+contexts:
+- name: ctx
+  context: {cluster: c, user: u}
+users:
+- name: u
+  user: {client-certificate: client.pem, client-key: client.pem}
+`, srv.URL))
+
+	got, err := fetchPodCIDRs(t.Context(), filepath.Join(dir, "kubeconfig"), "node-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := prefixes("10.244.3.0/24"); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }
 

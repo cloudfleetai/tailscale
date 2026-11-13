@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 // Package kubepodroutes advertises a Kubernetes node's pod CIDRs as subnet
-// routes.
-//
-// With every node of a cluster doing so, pod traffic between nodes can be
-// routed over Tailscale as it is, without an overlay network on top. The node
-// reads its own Node object from the API server with the kubeconfig named by
-// TS_KUBE_POD_ROUTES_KUBECONFIG, typically the kubelet's.
+// routes, read from its Node object with the kubeconfig named by
+// TS_KUBE_POD_ROUTES_KUBECONFIG.
 package kubepodroutes
 
 import (
@@ -45,7 +41,6 @@ func init() {
 	ipnext.RegisterExtension(featureName, newExtension)
 }
 
-// prefsEditor is the part of ipnlocal.LocalBackend the extension uses.
 type prefsEditor interface {
 	Prefs() ipn.PrefsView
 	EditPrefs(*ipn.MaskedPrefs) (ipn.PrefsView, error)
@@ -84,7 +79,7 @@ type extension struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	managed []netip.Prefix // routes this extension added; only touched by run
+	managed []netip.Prefix // routes this extension added
 }
 
 // Name implements [ipnext.Extension].
@@ -114,8 +109,6 @@ func (e *extension) run(ctx context.Context) {
 		cidrs, err := fetchPodCIDRs(ctx, e.kubeconfig, e.node)
 		switch {
 		case err != nil:
-			// The kubeconfig does not exist until kubelet has bootstrapped,
-			// so failing here is the normal state of a new node.
 			if s := err.Error(); s != lastErr {
 				e.logf("reading node %q: %v", e.node, err)
 				lastErr = s
@@ -136,8 +129,8 @@ func (e *extension) run(ctx context.Context) {
 	}
 }
 
-// advertise makes the node's advertised routes include cidrs, replacing the
-// ones a previous call added and leaving routes set by anyone else alone.
+// advertise adds cidrs to the advertised routes, replacing the ones a previous
+// call added.
 func (e *extension) advertise(cidrs []netip.Prefix) error {
 	cur := e.ed.Prefs().AdvertiseRoutes().AsSlice()
 	want := mergeRoutes(cur, e.managed, cidrs)
@@ -146,7 +139,7 @@ func (e *extension) advertise(cidrs []netip.Prefix) error {
 		return nil
 	}
 	_, err := e.ed.EditPrefs(&ipn.MaskedPrefs{
-		Prefs:              ipn.Prefs{AdvertiseRoutes: want},
+		AdvertiseRoutes:    want,
 		AdvertiseRoutesSet: true,
 	})
 	if err == nil {
