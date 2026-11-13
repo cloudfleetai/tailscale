@@ -102,9 +102,10 @@ type endpoint struct {
 	heartbeatDisabled bool
 	probeUDPLifetime  *probeUDPLifetime // UDP path lifetime probing; nil if disabled
 
-	expired         bool // whether the node has expired
-	isWireguardOnly bool // whether the endpoint is WireGuard only. Must not be changed after initializing the endpont.
-	relayCapable    bool // whether the node is capable of speaking via a [tailscale.com/net/udprelay.Server]
+	expired         bool           // whether the node has expired
+	routes          []netip.Prefix // subnet routes the peer advertises
+	isWireguardOnly bool           // whether the endpoint is WireGuard only. Must not be changed after initializing the endpont.
+	relayCapable    bool           // whether the node is capable of speaking via a [tailscale.com/net/udprelay.Server]
 }
 
 // udpRelayEndpointReady determines whether the given relay [addrQuality] should
@@ -1738,6 +1739,7 @@ func (de *endpoint) updateFromNode(n tailcfg.NodeView, heartbeatDisabled bool, p
 		}
 	}
 	de.expired = n.Expired()
+	de.routes = subnetRoutes(n)
 
 	discoKey := de.disco.Load().keyFromControl()
 
@@ -1799,6 +1801,9 @@ func (de *endpoint) setEndpointsLocked(eps interface {
 			de.c.logf("magicsock: bogus netmap endpoint from %v", eps)
 			continue
 		}
+		if prefixesContain(de.routes, ipp.Addr()) {
+			continue
+		}
 		if st, ok := de.endpointState[ipp]; ok {
 			st.index = int16(i)
 		} else {
@@ -1817,7 +1822,7 @@ func (de *endpoint) setEndpointsLocked(eps interface {
 	// Now delete anything unless it's still in the network map or
 	// was a recently discovered endpoint.
 	for ep, st := range de.endpointState {
-		if st.shouldDeleteLocked() {
+		if st.shouldDeleteLocked() || prefixesContain(de.routes, ep.Addr()) {
 			de.deleteEndpointLocked("updateFromNode", ep)
 		}
 	}
@@ -1834,6 +1839,9 @@ func (de *endpoint) addCandidateEndpoint(ep netip.AddrPort, forRxPingTxID stun.T
 	de.mu.Lock()
 	defer de.mu.Unlock()
 
+	if prefixesContain(de.routes, ep.Addr()) {
+		return false
+	}
 	if st, ok := de.endpointState[ep]; ok {
 		duplicatePing = forRxPingTxID == st.lastGotPingTxID
 		if !duplicatePing {
@@ -2189,6 +2197,9 @@ func (de *endpoint) handleCallMeMaybe(m *disco.CallMeMaybe) {
 			// We send these out, but ignore them for now.
 			// TODO: teach the ping code to ping on all interfaces
 			// for these.
+			continue
+		}
+		if prefixesContain(de.routes, ep.Addr()) {
 			continue
 		}
 		mak.Set(&de.isCallMeMaybeEP, ep, true)
