@@ -40,13 +40,13 @@ type Config = router.Config
 
 func TestRouterStates(t *testing.T) {
 	basic := `
-ip rule add -4 pref 5210 fwmark 0x80000/0xff0000 table main
-ip rule add -4 pref 5230 fwmark 0x80000/0xff0000 table default
-ip rule add -4 pref 5250 fwmark 0x80000/0xff0000 type unreachable
+ip rule add -4 pref 5210 fwmark 0x80000/0xff0f00 table main
+ip rule add -4 pref 5230 fwmark 0x80000/0xff0f00 table default
+ip rule add -4 pref 5250 fwmark 0x80000/0xff0f00 type unreachable
 ip rule add -4 pref 5270 table 52
-ip rule add -6 pref 5210 fwmark 0x80000/0xff0000 table main
-ip rule add -6 pref 5230 fwmark 0x80000/0xff0000 table default
-ip rule add -6 pref 5250 fwmark 0x80000/0xff0000 type unreachable
+ip rule add -6 pref 5210 fwmark 0x80000/0xff0f00 table main
+ip rule add -6 pref 5230 fwmark 0x80000/0xff0f00 table default
+ip rule add -6 pref 5250 fwmark 0x80000/0xff0f00 type unreachable
 ip rule add -6 pref 5270 table 52
 `
 	states := []struct {
@@ -2110,5 +2110,19 @@ func TestCleanUpOnlyTouchesTunInterface(t *testing.T) {
 	}
 	if !slices.Contains(fake.ips, "100.64.0.5/32 dev eth0") {
 		t.Errorf("non-Tailscale CGNAT addr on eth0 was wrongly removed; ips=%q", fake.ips)
+	}
+}
+
+func TestBypassRuleMaskIgnoresCiliumMarks(t *testing.T) {
+	matches := func(mark uint32) bool { return mark&bypassRuleMask == tsconst.LinuxBypassMarkNum }
+	if !matches(tsconst.LinuxBypassMarkNum) {
+		t.Error("tailscaled's own mark does not match")
+	}
+	// Cilium marks for an identity whose low byte is 0x08: plain identity,
+	// proxy ingress and proxy egress.
+	for _, mark := range []uint32{0x12080f00, 0x12080a00, 0x12080b00} {
+		if matches(mark) {
+			t.Errorf("Cilium mark %#x matches the bypass rules", mark)
+		}
 	}
 }

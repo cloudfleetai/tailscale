@@ -1574,6 +1574,13 @@ var (
 	tailscaleRouteTable = newRouteTable("tailscale", 52)
 )
 
+// bypassRuleMask is the fwmark mask of the ip rules that match tailscaled's
+// own packets. Besides Tailscale's mark byte it covers bits 8-11, which Cilium
+// sets on every packet whose mark carries a pod identity in the upper bits.
+// tailscaled leaves them zero, so an identity whose low byte equals the bypass
+// mark no longer makes a pod's packet look like one of ours.
+const bypassRuleMask = tsconst.LinuxFwmarkMaskNum | 0x0f00
+
 // baseIPRules are the policy routing rules that Tailscale uses, when not
 // running on a UBNT device.
 //
@@ -1669,7 +1676,7 @@ func (r *linuxRouter) justAddIPRules() error {
 			// Note: r is a value type here; safe to mutate it.
 			ru.Family = family.netlinkInt()
 			if ru.Mark != 0 {
-				ru.Mask = tsconst.LinuxFwmarkMaskNum
+				ru.Mask = bypassRuleMask
 			}
 			ru.Goto = -1
 			ru.SuppressIfgroup = -1
@@ -1702,7 +1709,7 @@ func (r *linuxRouter) addIPRulesWithIPCommand() error {
 			}
 			if rule.Mark != 0 {
 				if r.fwmaskWorks() {
-					args = append(args, "fwmark", fmt.Sprintf("0x%x/%s", rule.Mark, tsconst.LinuxFwmarkMask))
+					args = append(args, "fwmark", fmt.Sprintf("0x%x/0x%x", rule.Mark, bypassRuleMask))
 				} else {
 					args = append(args, "fwmark", fmt.Sprintf("0x%x", rule.Mark))
 				}
