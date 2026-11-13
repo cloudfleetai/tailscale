@@ -133,6 +133,7 @@ require (
 	github.com/toqueteos/webbrowser v1.2.1
 	github.com/u-root/u-root v0.16.0
 	github.com/ulikunitz/xz v0.5.16
+	github.com/vishvananda/netlink v1.3.1
 	github.com/vishvananda/netns v0.0.5
 	go.uber.org/zap v1.28.0
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745
@@ -503,7 +504,6 @@ require (
 	github.com/ultraware/whitespace v0.2.0 // indirect
 	github.com/uudashr/gocognit v1.2.1 // indirect
 	github.com/uudashr/iface v1.5.1 // indirect
-	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xen0n/gosmopolitan v1.3.0 // indirect

@@ -156,6 +156,10 @@ type metrics struct {
 
 // A Conn routes UDP packets and actively manages a list of its endpoints.
 type Conn struct {
+	// overlayAddrs holds peer endpoint addresses that are reached through an
+	// overlay network and must not carry WireGuard. See SetOverlayAddrs.
+	overlayAddrs atomic.Pointer[map[netip.Addr]struct{}]
+
 	// This block mirrors the contents and field order of the Options
 	// struct. Initialized once at construction, then constant.
 

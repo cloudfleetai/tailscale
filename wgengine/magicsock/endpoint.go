@@ -1352,6 +1352,11 @@ const (
 	// discover whether the UDP path was still active through any and all
 	// stateful middleboxes involved.
 	pingHeartbeatForUDPLifetime
+
+	// pingLANBypass means that the purpose of a ping was to check that a
+	// private address still reaches the peer. Its pong is recorded but never
+	// changes the path WireGuard uses.
+	pingLANBypass
 )
 
 // startDiscoPingLocked sends a disco ping to ep in a separate goroutine. resCB,
@@ -1399,7 +1404,7 @@ func (de *endpoint) startDiscoPingLocked(ep epAddr, now mono.Time, purpose disco
 	}
 
 	logLevel := discoLog
-	if purpose == pingHeartbeat {
+	if purpose == pingHeartbeat || purpose == pingLANBypass {
 		logLevel = discoVerboseLog
 	}
 	if purpose == pingCLI {
@@ -1440,6 +1445,9 @@ func (de *endpoint) sendDiscoPingsLocked(now mono.Time, sendCallMeMaybe bool) {
 			continue
 		}
 		if !st.lastPing.IsZero() && now.Sub(st.lastPing) < discoPingInterval {
+			continue
+		}
+		if de.c.isOverlayAddr(ep.Addr()) {
 			continue
 		}
 
@@ -1995,7 +2003,7 @@ func (de *endpoint) handlePongConnLocked(m *disco.Pong, di *discoInfo, src epAdd
 		})
 	}
 
-	if sp.purpose != pingHeartbeat && sp.purpose != pingHeartbeatForUDPLifetime {
+	if sp.purpose != pingHeartbeat && sp.purpose != pingHeartbeatForUDPLifetime && sp.purpose != pingLANBypass {
 		de.c.dlogf("[v1] magicsock: disco: %v<-%v (%v, %v)  got pong tx=%x latency=%v pktlen=%v pong.src=%v%v", de.c.discoAtomic.Short(), de.discoShort(), de.publicKey.ShortString(), src, m.TxID[:6], latency.Round(time.Millisecond), pktLen, m.Src, logger.ArgWriter(func(bw *bufio.Writer) {
 			if sp.to != src {
 				fmt.Fprintf(bw, " ping.to=%v", sp.to)
@@ -2013,7 +2021,7 @@ func (de *endpoint) handlePongConnLocked(m *disco.Pong, di *discoInfo, src epAdd
 
 	// Promote this pong response to our current best address if it's lower latency.
 	// TODO(bradfitz): decide how latency vs. preference order affects decision
-	if hasUDPTransport && !isDerp {
+	if hasUDPTransport && !isDerp && sp.purpose != pingLANBypass && !de.c.isOverlayAddr(sp.to.ap.Addr()) {
 		thisPong := addrQuality{
 			epAddr:  sp.to,
 			latency: latency,

@@ -56,6 +56,7 @@ import (
 	"tailscale.com/util/usermetric"
 	"tailscale.com/version"
 	"tailscale.com/wgengine/filter"
+	"tailscale.com/wgengine/lanbypass"
 	"tailscale.com/wgengine/magicsock"
 	"tailscale.com/wgengine/netstack/gro"
 	"tailscale.com/wgengine/router"
@@ -90,6 +91,7 @@ type userspaceEngine struct {
 	confListenPort uint16 // original conf.ListenPort
 	dns            *dns.Manager
 	magicConn      *magicsock.Conn
+	lanBypass      *lanbypass.Manager
 	netMon         *netmon.Monitor
 	health         *health.Tracker
 	netMonOwned    bool                // whether we created netMon (and thus need to close it)
@@ -450,6 +452,8 @@ func NewUserspaceEngine(logf logger.Logf, conf Config) (_ Engine, reterr error) 
 		return nil, fmt.Errorf("wgengine: %v", err)
 	}
 	closePool.add(e.magicConn)
+	e.lanBypass = lanbypass.Start(logf, e.magicConn)
+	closePool.addFunc(e.lanBypass.Close)
 	e.magicConn.SetNetworkUp(e.netMon.InterfaceState().AnyInterfaceUp())
 
 	if newNetLogger, ok := HookNewNetLogger.GetOk(); ok {
@@ -1131,6 +1135,7 @@ func (e *userspaceEngine) Close() {
 	e.closing = true
 	e.mu.Unlock()
 
+	e.lanBypass.Close()
 	e.magicConn.Close()
 	if e.netMonOwned {
 		e.netMon.Close()

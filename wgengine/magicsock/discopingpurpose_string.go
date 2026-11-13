@@ -15,11 +15,12 @@ func _() {
 	_ = x[pingHeartbeat-1]
 	_ = x[pingCLI-2]
 	_ = x[pingHeartbeatForUDPLifetime-3]
+	_ = x[pingLANBypass-4]
 }
 
-const _discoPingPurpose_name = "DiscoveryHeartbeatCLIHeartbeatForUDPLifetime"
+const _discoPingPurpose_name = "DiscoveryHeartbeatCLIHeartbeatForUDPLifetimeLANBypass"
 
-var _discoPingPurpose_index = [...]uint8{0, 9, 18, 21, 44}
+var _discoPingPurpose_index = [...]uint8{0, 9, 18, 21, 44, 53}
 
 func (i discoPingPurpose) String() string {
 	idx := int(i) - 0
