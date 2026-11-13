@@ -9,6 +9,7 @@ import (
 	"net/netip"
 
 	"github.com/tailscale/netlink"
+	"tailscale.com/net/netmon"
 )
 
 var overlayLinkTypes = map[string]bool{
@@ -17,16 +18,17 @@ var overlayLinkTypes = map[string]bool{
 }
 
 // overlayLocalAddrs returns the addresses on tunnel and virtual links, such
-// as a CNI's host interface. They belong to a network that runs on top of
-// this one.
+// as a CNI's host interface. The default route's interface is never one of
+// them: in a container it is a veth and the only way in.
 func overlayLocalAddrs() []netip.Addr {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return nil
 	}
+	uplink, _ := netmon.DefaultRouteInterface()
 	var out []netip.Addr
 	for _, l := range links {
-		if !overlayLinkTypes[l.Type()] {
+		if !isOverlayLink(l.Type(), l.Attrs().Name, uplink) {
 			continue
 		}
 		addrs, err := netlink.AddrList(l, netlink.FAMILY_ALL)
@@ -40,4 +42,8 @@ func overlayLocalAddrs() []netip.Addr {
 		}
 	}
 	return out
+}
+
+func isOverlayLink(kind, name, uplink string) bool {
+	return overlayLinkTypes[kind] && name != uplink
 }
