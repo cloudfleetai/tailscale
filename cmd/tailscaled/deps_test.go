@@ -218,7 +218,7 @@ func TestOmitAuth(t *testing.T) {
 	deptest.DepChecker{
 		GOOS:   "linux",
 		GOARCH: "amd64",
-		Tags:   "ts_omit_oauthkey,ts_omit_identityfederation,ts_include_cli",
+		Tags:   "ts_omit_oauthkey,ts_omit_identityfederation,ts_omit_kubepodroutes,ts_include_cli",
 		OnDep: func(dep string) {
 			if strings.HasPrefix(dep, "golang.org/x/oauth2") {
 				t.Errorf("unexpected oauth2 dep: %q", dep)
