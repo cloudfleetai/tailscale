@@ -47,14 +47,3 @@ func prefixesContain(routes []netip.Prefix, a netip.Addr) bool {
 	}
 	return false
 }
-
-// unusableLocalAddr reports whether a must not be offered to peers as an
-// endpoint: it is inside a route this node advertises, or on an overlay link.
-func (c *Conn) unusableLocalAddr(a netip.Addr, overlay []netip.Addr) bool {
-	if slices.Contains(overlay, a) {
-		return true
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.self.Valid() && prefixesContain(subnetRoutes(c.self), a)
-}

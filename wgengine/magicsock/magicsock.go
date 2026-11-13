@@ -1431,11 +1431,7 @@ func (c *Conn) determineEndpoints(ctx context.Context) ([]tailcfg.Endpoint, erro
 			// offline, for example.
 			ips = loopback
 		}
-		overlay := overlayLocalAddrs()
 		for _, ip := range ips {
-			if c.unusableLocalAddr(ip, overlay) {
-				continue
-			}
 			addAddr(netip.AddrPortFrom(ip, uint16(localAddr.Port)), tailcfg.EndpointLocal)
 		}
 	} else {

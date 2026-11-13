@@ -64,21 +64,3 @@ func TestEndpointInsidePeerRoute(t *testing.T) {
 		t.Errorf("bestAddr still %v", de.bestAddr.ap)
 	}
 }
-
-func TestUnusableLocalAddr(t *testing.T) {
-	c := &Conn{}
-	c.self = (&tailcfg.Node{
-		Addresses:  pfx("100.64.0.1/32"),
-		AllowedIPs: pfx("100.64.0.1/32", "10.244.1.0/24"),
-	}).View()
-	overlay := []netip.Addr{netip.MustParseAddr("172.20.0.1")}
-	for addr, want := range map[string]bool{
-		"10.244.1.1": true,  // inside a route this node advertises
-		"172.20.0.1": true,  // on an overlay link
-		"10.0.0.3":   false, // a real address
-	} {
-		if got := c.unusableLocalAddr(netip.MustParseAddr(addr), overlay); got != want {
-			t.Errorf("%s: got %v, want %v", addr, got, want)
-		}
-	}
-}
