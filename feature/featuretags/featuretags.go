@@ -288,6 +288,7 @@ var Features = map[FeatureTag]FeatureMeta{
 	},
 	"serviceclientprefs": {Sym: "ServiceClientPrefs", Desc: "Desktop client service launch preferences"},
 	"favorites":          {Sym: "Favorites", Desc: "Locally-pinned favorite devices, exit nodes, and services"},
+	"kubepeerroutes":     {Sym: "KubePeerRoutes", Desc: "Route a Kubernetes cluster's pod CIDRs to its nodes' peers"},
 	"qrcodes":            {Sym: "QRCodes", Desc: "QR codes in tailscale CLI"},
 	"relayserver":        {Sym: "RelayServer", Desc: "Relay server"},
 	"remoteconfig": {
