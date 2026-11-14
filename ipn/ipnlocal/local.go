@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"maps"
 	"math"
 	"math/rand/v2"
@@ -6499,7 +6500,7 @@ func (b *LocalBackend) authReconfigLocked() {
 	// expected extension (features/conn25) does not want these routes
 	// installed on the OS.
 	// See also [Hooks.ExtraWireGuardAllowedIPs].
-	if extraAllowedIPsFn, ok := b.extHost.hooks.ExtraWireGuardAllowedIPs.GetOk(); ok {
+	if extraAllowedIPsFn, ok := b.extraAllowedIPsFn(); ok {
 		for k := range cn.updateRouteManagerExtras(extraAllowedIPsFn) {
 			b.e.SyncDevicePeer(k)
 		}
@@ -6991,6 +6992,9 @@ func (b *LocalBackend) routerConfigLocked(cfg *wgcfg.Config, prefs ipn.PrefsView
 	// Get any extra Routes an extension may want installed.
 	if extensionRoutesFx, ok := b.extHost.hooks.ExtraRouterConfigRoutes.GetOk(); ok {
 		rs.Routes = extensionRoutesFx().AppendTo(rs.Routes)
+	}
+	if subnetsFn, ok := b.extHost.hooks.ExtraPeerSubnets.GetOk(); ok {
+		rs.Routes = appendPeerSubnets(rs.Routes, subnetsFn())
 	}
 
 	return rs
@@ -9649,4 +9653,40 @@ func (b *LocalBackend) stateEncrypted() opt.Bool {
 		_, ok := b.store.(ipn.EncryptedStateStore)
 		return opt.NewBool(ok)
 	}
+}
+
+// extraAllowedIPsFn combines the [ipnext.Hooks.ExtraWireGuardAllowedIPs] and
+// [ipnext.Hooks.ExtraPeerSubnets] hooks into one function for the route
+// manager.
+func (b *LocalBackend) extraAllowedIPsFn() (func(iter.Seq2[tailcfg.NodeID, key.NodePublic]) map[tailcfg.NodeID][]netip.Prefix, bool) {
+	extraFn, hasExtra := b.extHost.hooks.ExtraWireGuardAllowedIPs.GetOk()
+	subnetsFn, hasSubnets := b.extHost.hooks.ExtraPeerSubnets.GetOk()
+	switch {
+	case !hasSubnets:
+		return extraFn, hasExtra
+	case !hasExtra:
+		return func(iter.Seq2[tailcfg.NodeID, key.NodePublic]) map[tailcfg.NodeID][]netip.Prefix { return subnetsFn() }, true
+	}
+	return func(peers iter.Seq2[tailcfg.NodeID, key.NodePublic]) map[tailcfg.NodeID][]netip.Prefix {
+		extra, subnets := extraFn(peers), subnetsFn()
+		if len(subnets) == 0 {
+			return extra
+		}
+		out := maps.Clone(extra)
+		for id, pfxs := range subnets {
+			mak.Set(&out, id, append(slices.Clip(out[id]), pfxs...))
+		}
+		return out
+	}, true
+}
+
+// appendPeerSubnets appends the prefixes in subnets to routes, sorted and
+// without duplicates.
+func appendPeerSubnets(routes []netip.Prefix, subnets map[tailcfg.NodeID][]netip.Prefix) []netip.Prefix {
+	var add []netip.Prefix
+	for _, pfxs := range subnets {
+		add = append(add, pfxs...)
+	}
+	slices.SortFunc(add, netip.Prefix.Compare)
+	return append(routes, slices.Compact(add)...)
 }

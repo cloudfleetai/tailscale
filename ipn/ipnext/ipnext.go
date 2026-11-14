@@ -502,6 +502,14 @@ type Hooks struct {
 	// WireGuard APIs.
 	ExtraWireGuardAllowedIPs feature.Hook[func(peers iter.Seq2[tailcfg.NodeID, key.NodePublic]) map[tailcfg.NodeID][]netip.Prefix]
 
+	// ExtraPeerSubnets returns subnet prefixes routed to peers, keyed by
+	// node ID, as if those peers had advertised them and the node had
+	// accepted them: they are added to the peers' WireGuard AllowedIPs and
+	// to the OS routes. Unlike [Hooks.ExtraWireGuardAllowedIPs], it is
+	// meant for subnets, and it is independent of that hook, so both can be
+	// set. The returned map must not be mutated after it is returned.
+	ExtraPeerSubnets feature.Hook[func() map[tailcfg.NodeID][]netip.Prefix]
+
 	// ExtraRouterConfigRoutes returns a view of prefixes to append to [router.Config.Routes].
 	//
 	// Routes goes through the WireGuard engine which makes efforts to avoid
